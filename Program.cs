@@ -74,8 +74,13 @@ internal class Program
 
         User me = await botClient.GetMeAsync(cancellationToken: cts.Token);
 
-        Console.WriteLine($"Start listening for @{me.Username}. Stop with keypress..");
-        Console.ReadLine();
+        Console.WriteLine($"Start listening for @{me.Username}.");
+
+        // Bot is in threads - sleep main thread
+        while (true)
+        {
+            Thread.Sleep(Timeout.Infinite);
+        }
 
         // Send cancellation request to stop bot
         await cts.CancelAsync();
