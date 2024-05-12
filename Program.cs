@@ -36,7 +36,7 @@ internal class Program
         {"prysmaticlabs/prysm","build-push-prysm.yml"},
         {"paradigmxyz/reth","build-push-reth.yml"},
         {"consensys/teku","build-push-teku.yml"},
-        {"MariusVanDerWijden/tx-fuzz","build-push-tx-fuzz.yml"},
+        {"mariusvanderwijden/tx-fuzz","build-push-tx-fuzz.yml"},
     };
 
     private static string _gitHubToken = String.Empty;
@@ -172,7 +172,7 @@ internal class Program
         };
 
         // Check if given repo is a direct map
-        if (!RepoToWorkflow.TryGetValue(repo, out string? workflowId))
+        if (!RepoToWorkflow.TryGetValue(repo.ToLower(), out string? workflowId))
         {
             Console.WriteLine($"Repo {repo} not in the workflow map. checking for fork.");
             
@@ -195,7 +195,7 @@ internal class Program
                 string? parentRepo = forkJson.RootElement.GetProperty("parent").GetProperty("full_name").GetString();
 
                 // Check if we have a workflow for the parent
-                if (!RepoToWorkflow.TryGetValue(parentRepo, out workflowId))
+                if (!RepoToWorkflow.TryGetValue(parentRepo.ToLower(), out workflowId))
                 {
                     return false;
                 }
