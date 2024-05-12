@@ -6,11 +6,12 @@ using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
+using JsonDocument = System.Text.Json.JsonDocument;
 
 namespace TelegramBuildBot;
 internal class Program
 {
-    private static readonly Dictionary<string, string?> RepoToWorkflow = new()
+    private static readonly Dictionary<string?, string?> RepoToWorkflow = new()
     {
         {"ethpandaops/armiarma","build-push-armiarma.yml"},
         {"dapplion/beacon-metrics-gazer","build-push-beacon-metrics-gazer.yml"},
@@ -121,7 +122,7 @@ internal class Program
 
             if (match is { Success: true, Groups.Count: 3 })
             {
-                string repo = match.Groups[1].Value;
+                string? repo = match.Groups[1].Value;
                 string branch = match.Groups[2].Value;
                 if (await TriggerGitHubWorkflow(_gitHubToken, repo, branch))
                 {
@@ -152,7 +153,7 @@ internal class Program
         }
     }
 
-    private static async Task<bool> TriggerGitHubWorkflow(string gitHubToken, string repo, string branch)
+    private static async Task<bool> TriggerGitHubWorkflow(string gitHubToken, string? repo, string branch)
     {
         
         // Register a runner with github
@@ -170,10 +171,43 @@ internal class Program
             } 
         };
 
+        // Check if given repo is a direct map
         if (!RepoToWorkflow.TryGetValue(repo, out string? workflowId))
         {
-            Console.WriteLine($"Repo {repo} not in the workflow map. ignoring.");
-            return false;
+            Console.WriteLine($"Repo {repo} not in the workflow map. checking for fork.");
+            
+            // check for fork
+            var forkResp = await client.GetAsync($"https://api.github.com/repos/{repo}");
+            if (forkResp.IsSuccessStatusCode)
+            {
+                // Got repo meta
+                string forkContent = await forkResp.Content.ReadAsStringAsync();
+                JsonDocument forkJson = System.Text.Json.JsonSerializer.Deserialize<JsonDocument>(forkContent);
+                
+                // check if fork
+                bool isFork = forkJson.RootElement.GetProperty("fork").GetBoolean();
+                if (!isFork)
+                {
+                    // Not a fork - irgnore.
+                    return false;
+                }
+
+                string? parentRepo = forkJson.RootElement.GetProperty("parent").GetProperty("full_name").GetString();
+
+                // Check if we have a workflow for the parent
+                if (!RepoToWorkflow.TryGetValue(parentRepo, out workflowId))
+                {
+                    return false;
+                }
+
+                Console.WriteLine($"Found valid parent repo at {parentRepo}");
+            }
+            else
+            {
+                // Unable to grab repo meta - return error
+                return false;
+            }
+
         }
         
         var content = new StringContent(
