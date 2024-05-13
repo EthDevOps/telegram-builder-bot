@@ -124,7 +124,7 @@ internal class Program
                 (bool triggerSuccess, List<string> dockerImages, string runUrl) = await TriggerGitHubWorkflow(_gitHubToken, repo, branch);
                 if (triggerSuccess)
                 {
-                    await SendResponse($"Your build was triggered\\. [View run on GitHub]({runUrl})\nDocker Image(s) once run completed:\n{dockerImages.Select(x => $"`{x}`\n")}");
+                    await SendResponse($"Your build was triggered\\. [View run on GitHub]({runUrl})\nDocker Image\\(s\\) once run completed:\n{dockerImages.Select(x => $"`{x}`\n")}");
                     Console.WriteLine($"Build triggered for {repo}/{branch} [Run URL: {runUrl} | DockerImage: {String.Join(':',dockerImages)}]"); 
                 }
                 else
