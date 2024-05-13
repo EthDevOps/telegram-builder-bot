@@ -98,7 +98,6 @@ internal class Program
             return;
 
         long chatId = message.Chat.Id;
-
         Console.WriteLine($"Received a '{messageText}' message in chat {chatId}.");
         
         // check for command
@@ -107,10 +106,7 @@ internal class Program
             string[] msgSegments = messageText.Split(' ');
             if (msgSegments.Length < 2)
             {
-                await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: "You need to supply a repository link with a branch.",
-                    cancellationToken: cancellationToken);
+                await SendResponse("You need to supply a repository link with a branch.");
                 Console.WriteLine("No repo link supplied");
                 return;
 
@@ -126,30 +122,32 @@ internal class Program
                 string branch = match.Groups[2].Value;
                 if (await TriggerGitHubWorkflow(_gitHubToken, repo, branch))
                 {
-                    await botClient.SendTextMessageAsync(
-                        chatId: chatId,
-                        text: "Your build was triggered.",
-                        cancellationToken: cancellationToken);
+                    await SendResponse("Your build was triggered.");
                     Console.WriteLine($"Build triggered for {repo} - {branch}"); 
                 }
                 else
                 {
-                    await botClient.SendTextMessageAsync(
-                        chatId: chatId,
-                        text: "Sorry. Was unable to trigger your build. Likely the repository is not supported.",
-                        cancellationToken: cancellationToken);
+                    await SendResponse("Sorry. Was unable to trigger your build. Likely the repository is not supported.");
                     Console.WriteLine("Unable to trigger build."); 
                 }
                 
             }
             else
             {
-                await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: "Sorry. Was unable to get the repository and branch from the URL. Check your URL and try again.",
-                    cancellationToken: cancellationToken);
+                await SendResponse("Sorry. Was unable to get the repository and branch from the URL. Check your URL and try again.");
                 Console.WriteLine("Unable to parse repo");
             }
+        }
+
+        async Task SendResponse(string msg)
+        {
+            bool isTopic = message.IsTopicMessage ?? false; 
+            await botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: msg, 
+                messageThreadId: isTopic ? message.MessageThreadId : null,
+                replyToMessageId: message.MessageId,
+                cancellationToken: cancellationToken);
         }
     }
 
