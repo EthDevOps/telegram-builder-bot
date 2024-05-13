@@ -121,11 +121,11 @@ internal class Program
             {
                 string? repo = match.Groups[1].Value;
                 string branch = match.Groups[2].Value;
-                (bool triggerSuccess, string dockerImage, string runUrl) = await TriggerGitHubWorkflow(_gitHubToken, repo, branch);
+                (bool triggerSuccess, List<string> dockerImages, string runUrl) = await TriggerGitHubWorkflow(_gitHubToken, repo, branch);
                 if (triggerSuccess)
                 {
-                    await SendResponse($"Your build was triggered\\. [View run on GitHub]({runUrl})\nDocker Image once run completed: `{dockerImage}`");
-                    Console.WriteLine($"Build triggered for {repo}/{branch} [Run URL: {runUrl} | DockerImage: {dockerImage}]"); 
+                    await SendResponse($"Your build was triggered\\. [View run on GitHub]({runUrl})\nDocker Image(s) once run completed:\n{dockerImages.Select(x => $"`{x}`\n")}");
+                    Console.WriteLine($"Build triggered for {repo}/{branch} [Run URL: {runUrl} | DockerImage: {String.Join(':',dockerImages)}]"); 
                 }
                 else
                 {
@@ -154,7 +154,7 @@ internal class Program
         }
     }
 
-    private static async Task<(bool IsSuccessStatusCode, string dockerImageUrl, string? runUrl)> TriggerGitHubWorkflow(string gitHubToken, string? repo, string branch)
+    private static async Task<(bool IsSuccessStatusCode, List<string> dockerImageUrls, string? runUrl)> TriggerGitHubWorkflow(string gitHubToken, string? repo, string branch)
     {
         
         // Register a runner with github
@@ -192,7 +192,7 @@ internal class Program
                 if (!isFork)
                 {
                     // Not a fork - irgnore.
-                    return (false, String.Empty, String.Empty);
+                    return (false, null, String.Empty)!;
                 }
 
                 string? parentRepo = forkJson.RootElement.GetProperty("parent").GetProperty("full_name").GetString();
@@ -200,7 +200,7 @@ internal class Program
                 // Check if we have a workflow for the parent
                 if (!RepoToWorkflow.TryGetValue(parentRepo.ToLower(), out workflowId))
                 {
-                    return (false,String.Empty, String.Empty);
+                    return (false,null, String.Empty)!;
                 }
 
                 Console.WriteLine($"Found valid parent repo at {parentRepo}");
@@ -208,7 +208,7 @@ internal class Program
             else
             {
                 // Unable to grab repo meta - return error
-                return (false, String.Empty, String.Empty);
+                return (false, null, String.Empty)!;
             }
 
         }
@@ -217,14 +217,52 @@ internal class Program
 
         // Grab the docker base from the workflow
         string dockerBase = Regex.Match(workflowId, @"build-push-(.+)\.yml").Groups[1].Value;
+        List<string> dockerImageUrls = new List<string>();
 
-        string dockerImageUrl = $"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{branch}";
-        if (isFork)
+        if (dockerBase == "prysm")
         {
-            string forkUser = repo.Split('/')[0];
-            dockerImageUrl = $"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{forkUser}-{branch}";
+            if (isFork)
+            {
+                string forkUser = repo.Split('/')[0];
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/prysm-beacon-chain:{forkUser}-{branch}");
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/prysm-validator:{forkUser}-{branch}");
+            }
+            else
+            {
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/prysm-beacon-chain:{branch}");
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/prysm-validator:{branch}");
+            }
         }
-       
+        else if (dockerBase == "nimbus-eth2")
+        {
+            if (isFork)
+            {
+                string forkUser = repo.Split('/')[0];
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/nimbus-eth2:{forkUser}-{branch}");
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/nimbus-validator-client:{forkUser}-{branch}");
+            }
+            else
+            {
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/nimbus-eth2:{branch}");
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/nimbus-validator-client:{branch}");
+            }
+            
+        }
+        else
+        {
+            if (isFork)
+            {
+                string forkUser = repo.Split('/')[0];
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{forkUser}-{branch}");
+            }
+            else
+            {
+                dockerImageUrls.Add($"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{branch}");
+            }
+        }
+
+
+
         // Trigger job
         var content = new StringContent(
             JsonConvert.SerializeObject(requestData), 
@@ -251,7 +289,7 @@ internal class Program
             }
         }
         
-        return (response.IsSuccessStatusCode, dockerImageUrl, runUrl);
+        return (response.IsSuccessStatusCode, dockerImageUrls, runUrl);
     }
 
     static Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
