@@ -107,7 +107,7 @@ internal class Program
             string[] msgSegments = messageText.Split(' ');
             if (msgSegments.Length < 2)
             {
-                await SendResponse("You need to supply a repository link with a branch.");
+                await SendResponse("You need to supply a repository link with a branch\\.");
                 Console.WriteLine("No repo link supplied");
                 return;
 
