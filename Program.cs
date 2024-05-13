@@ -129,20 +129,21 @@ internal class Program
                 }
                 else
                 {
-                    await SendResponse("Sorry. Was unable to trigger your build. Likely the repository is not supported.");
+                    await SendResponse("Sorry\\. Was unable to trigger your build\\. Likely the repository is not supported\\.");
                     Console.WriteLine("Unable to trigger build."); 
                 }
                 
             }
             else
             {
-                await SendResponse("Sorry. Was unable to get the repository and branch from the URL. Check your URL and try again.");
+                await SendResponse("Sorry\\. Was unable to get the repository and branch from the URL\\. Check your URL and try again\\.");
                 Console.WriteLine("Unable to parse repo");
             }
         }
 
         async Task SendResponse(string msg)
         {
+            Console.WriteLine($"Chat response:\n{msg}");
             bool isTopic = message.IsTopicMessage ?? false; 
             await botClient.SendTextMessageAsync(
                 chatId: chatId,
