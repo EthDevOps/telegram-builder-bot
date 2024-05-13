@@ -72,7 +72,9 @@ internal class Program
             pollingErrorHandler: HandlePollingErrorAsync,
             receiverOptions: receiverOptions,
             cancellationToken: cts.Token
+            
         );
+        
 
         User me = await botClient.GetMeAsync(cancellationToken: cts.Token);
 
@@ -144,14 +146,22 @@ internal class Program
         async Task SendResponse(string msg)
         {
             Console.WriteLine($"Chat response:\n{msg}");
-            bool isTopic = message.IsTopicMessage ?? false; 
-            await botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: msg, 
-                parseMode: ParseMode.MarkdownV2,
-                messageThreadId: isTopic ? message.MessageThreadId : null,
-                replyToMessageId: message.MessageId,
-                cancellationToken: cancellationToken);
+            try
+            {
+                bool isTopic = message.IsTopicMessage ?? false;
+                await botClient.SendTextMessageAsync(
+                    chatId: chatId,
+                    text: msg,
+                    parseMode: ParseMode.MarkdownV2,
+                    messageThreadId: isTopic ? message.MessageThreadId : null,
+                    replyToMessageId: message.MessageId,
+
+                    cancellationToken: cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Unable to send msg: {ex.Message}");
+            }
         }
     }
 
@@ -298,7 +308,7 @@ internal class Program
         string errorMessage = exception switch
         {
             ApiRequestException apiRequestException
-                => $"Telegram API Error:\n[{apiRequestException.ErrorCode}]\n{apiRequestException.Message}",
+                => $"Telegram API Error:\n[{apiRequestException.ErrorCode}]  {apiRequestException.Message}",
             _ => exception.ToString()
         };
 
