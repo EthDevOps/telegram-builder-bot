@@ -6,6 +6,7 @@ using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using JsonDocument = System.Text.Json.JsonDocument;
 
 namespace TelegramBuildBot;
@@ -120,10 +121,11 @@ internal class Program
             {
                 string? repo = match.Groups[1].Value;
                 string branch = match.Groups[2].Value;
-                if (await TriggerGitHubWorkflow(_gitHubToken, repo, branch))
+                (bool triggerSuccess, string dockerImage, string runUrl) = await TriggerGitHubWorkflow(_gitHubToken, repo, branch);
+                if (triggerSuccess)
                 {
-                    await SendResponse("Your build was triggered.");
-                    Console.WriteLine($"Build triggered for {repo} - {branch}"); 
+                    await SendResponse($"Your build was triggered. [View run on GitHub]({runUrl})\nDocker Image once run completed: `{dockerImage}`");
+                    Console.WriteLine($"Build triggered for {repo}/{branch} [Run URL: {runUrl} | DockerImage: {dockerImage}]"); 
                 }
                 else
                 {
@@ -145,13 +147,14 @@ internal class Program
             await botClient.SendTextMessageAsync(
                 chatId: chatId,
                 text: msg, 
+                parseMode: ParseMode.MarkdownV2,
                 messageThreadId: isTopic ? message.MessageThreadId : null,
                 replyToMessageId: message.MessageId,
                 cancellationToken: cancellationToken);
         }
     }
 
-    private static async Task<bool> TriggerGitHubWorkflow(string gitHubToken, string? repo, string branch)
+    private static async Task<(bool IsSuccessStatusCode, string dockerImageUrl, string? runUrl)> TriggerGitHubWorkflow(string gitHubToken, string? repo, string branch)
     {
         
         // Register a runner with github
@@ -169,6 +172,8 @@ internal class Program
             } 
         };
 
+        bool isFork = false;
+        
         // Check if given repo is a direct map
         if (!RepoToWorkflow.TryGetValue(repo.ToLower(), out string? workflowId))
         {
@@ -183,11 +188,11 @@ internal class Program
                 JsonDocument forkJson = System.Text.Json.JsonSerializer.Deserialize<JsonDocument>(forkContent);
                 
                 // check if fork
-                bool isFork = forkJson.RootElement.GetProperty("fork").GetBoolean();
+                isFork = forkJson.RootElement.GetProperty("fork").GetBoolean();
                 if (!isFork)
                 {
                     // Not a fork - irgnore.
-                    return false;
+                    return (false, String.Empty, String.Empty);
                 }
 
                 string? parentRepo = forkJson.RootElement.GetProperty("parent").GetProperty("full_name").GetString();
@@ -195,7 +200,7 @@ internal class Program
                 // Check if we have a workflow for the parent
                 if (!RepoToWorkflow.TryGetValue(parentRepo.ToLower(), out workflowId))
                 {
-                    return false;
+                    return (false,String.Empty, String.Empty);
                 }
 
                 Console.WriteLine($"Found valid parent repo at {parentRepo}");
@@ -203,11 +208,24 @@ internal class Program
             else
             {
                 // Unable to grab repo meta - return error
-                return false;
+                return (false, String.Empty, String.Empty);
             }
 
         }
         
+        // Build tag url
+
+        // Grab the docker base from the workflow
+        string dockerBase = Regex.Match(workflowId, @"build-push-(.+)\.yml").Groups[1].Value;
+
+        string dockerImageUrl = $"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{branch}";
+        if (isFork)
+        {
+            string forkUser = repo.Split('/')[0];
+            dockerImageUrl = $"192.168.45.152:80/dh/ethpandaops/{dockerBase}:{forkUser}-{branch}";
+        }
+       
+        // Trigger job
         var content = new StringContent(
             JsonConvert.SerializeObject(requestData), 
             Encoding.UTF8, 
@@ -216,7 +234,24 @@ internal class Program
         HttpResponseMessage response = await client.PostAsync(
             $"https://api.github.com/repos/ethpandaops/eth-client-docker-image-builder/actions/workflows/{workflowId}/dispatches", content);
 
-        return response.IsSuccessStatusCode;
+        // Grab job url from GH
+        
+        HttpResponseMessage runsResponse = await client.GetAsync(
+            $"https://api.github.com/repos/ethpandaops/eth-client-docker-image-builder/actions/runs");
+        
+        string? runUrl = String.Empty;
+        if(response.IsSuccessStatusCode)
+        {
+            string runsContent = await runsResponse.Content.ReadAsStringAsync();
+            JsonDocument? responseObject = System.Text.Json.JsonSerializer.Deserialize<JsonDocument>(runsContent);
+            if (responseObject != null)
+            {
+                var firstRun = responseObject.RootElement.GetProperty("workflow_runs").EnumerateArray().FirstOrDefault();
+                runUrl = firstRun.GetProperty("html_url").GetString();
+            }
+        }
+        
+        return (response.IsSuccessStatusCode, dockerImageUrl, runUrl);
     }
 
     static Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
