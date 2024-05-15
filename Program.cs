@@ -104,7 +104,7 @@ internal class Program
         Console.WriteLine($"Received a '{messageText}' message in chat {chatId}.");
         
         // check for command
-        if (messageText.StartsWith("/build"))
+        if (messageText.StartsWith("/build") || messageText.StartsWith("/barnabas"))
         {
             string[] msgSegments = messageText.Split(' ');
             if (msgSegments.Length < 2)
